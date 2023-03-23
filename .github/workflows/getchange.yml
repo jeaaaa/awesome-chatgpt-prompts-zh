@@ -1,0 +1,16 @@
+name: Pull Latest Changes
+
+on:
+  schedule:
+    - cron: "0 * * * *" # 每小时执行一次
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Pull latest changes
+        run: git pull origin main
