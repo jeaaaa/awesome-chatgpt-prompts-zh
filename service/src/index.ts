@@ -1,13 +1,18 @@
+import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import csv from "csv-parser";
 import axios from "axios";
 
-const ROOT_DIR = path.join(__dirname, "..", "..", "..", "..");
-const PROMPT_FILE = path.join(ROOT_DIR, "prompt.csv");
-const OUTPUT_FILE = path.join(ROOT_DIR, "prompt_translated.csv");
+dotenv.config();
+
+const ROOT_DIR = path.join(__dirname, "../../");
+const PROMPT_FILE = path.join(ROOT_DIR, "prompts.csv");
+const OUTPUT_JSON_FILE = path.join(ROOT_DIR, "prompt_translated.json");
+const OUTPUT_MD_FILE = path.join(ROOT_DIR, "prompt_translated.md");
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
+const openaiApiUrl = process.env.OPENAI_API_BASE_URL;
 
 if (!openaiApiKey) {
   console.error("OPENAI_API_KEY environment variable not set");
@@ -16,13 +21,15 @@ if (!openaiApiKey) {
 
 const translatePrompt = async (prompt: string): Promise<string> => {
   const response = await axios.post(
-    "https://api.openai.com/v1/engines/davinci-codex/completions",
+    `${openaiApiUrl}/v1/completions`,
     {
       prompt,
-      max_tokens: 60,
-      n: 1,
-      stop: ["\n"],
-      temperature: 0.7,
+      max_tokens: 1024,
+      model: "text-davinci-003",
+      // n: 1,
+      // stop: ["\n"],
+      top_p: 1,
+      temperature: 0.3,
     },
     {
       headers: {
@@ -31,8 +38,9 @@ const translatePrompt = async (prompt: string): Promise<string> => {
       },
     }
   );
-
-  const { choices } = response.data?.choices?.[0] ?? {};
+  console.log(response.data);
+  console.log(response.data?.choices[0].text);
+  const { choices } = response.data ?? {};
 
   if (!choices || choices.length === 0) {
     throw new Error("Failed to translate prompt");
@@ -44,22 +52,38 @@ const translatePrompt = async (prompt: string): Promise<string> => {
 const translatePrompts = async () => {
   const prompts = [];
 
-  fs.createReadStream(PROMPT_FILE)
-    .pipe(csv())
-    .on("data", async (data) => {
-      const prompt = data.prompt.trim();
+  const csvStream = fs.createReadStream(PROMPT_FILE).pipe(csv());
 
-      if (prompt) {
-        const translatedPrompt = await translatePrompt(prompt);
-        prompts.push({ prompt: translatedPrompt });
+  for await (const data of csvStream) {
+    const prompt = data.prompt.trim();
+    const act = data.act.trim();
+
+    if (prompt && act) {
+      const promptText = `Please help me to translate, " ${prompt} " to simplified chinese`;
+      const actText = `Please help me to translate, "${act}" to simplified chinese`;
+      console.log(actText);
+      try {
+        const translatedPrompt = await translatePrompt(promptText);
+        const translatedAct = await translatePrompt(actText);
+        prompts.push({ act: translatedAct, prompt: translatedPrompt });
+      } catch (err) {
+        console.error(`Unable to translate prompt: ${prompt}`, err);
       }
-    })
-    .on("end", () => {
-      fs.writeFileSync(OUTPUT_FILE, "");
-      prompts.forEach((prompt) => {
-        fs.appendFileSync(OUTPUT_FILE, `${prompt.prompt}\n`);
-      });
+    }
+  }
+
+  if (prompts.length > 0) {
+    fs.writeFileSync(OUTPUT_JSON_FILE, "");
+    prompts.forEach((prompt) => {
+      fs.appendFileSync(OUTPUT_JSON_FILE, JSON.stringify(prompt));
     });
+
+    fs.writeFileSync(OUTPUT_MD_FILE, "# Prompts\n\n");
+    prompts.forEach((prompt) => {
+      const mdContent = `## ${prompt.act}\n ${prompt.prompt}\n`;
+      fs.appendFileSync(OUTPUT_MD_FILE, mdContent);
+    });
+  }
 };
 
 translatePrompts();
