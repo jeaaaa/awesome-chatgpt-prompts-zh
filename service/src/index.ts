@@ -74,9 +74,7 @@ const translatePrompts = async () => {
 
   if (prompts.length > 0) {
     fs.writeFileSync(OUTPUT_JSON_FILE, "");
-    prompts.forEach((prompt) => {
-      fs.appendFileSync(OUTPUT_JSON_FILE, JSON.stringify(prompt));
-    });
+    fs.appendFileSync(OUTPUT_JSON_FILE, JSON.stringify(prompts));
 
     fs.writeFileSync(OUTPUT_MD_FILE, "# Prompts\n\n");
     prompts.forEach((prompt) => {
